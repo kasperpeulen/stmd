@@ -71,7 +71,7 @@ var reHrule = /^(?:(?:\* *){3,}|(?:_ *){3,}|(?:- *){3,}) *$/;
 
 // Matches a character with a special meaning in markdown,
 // or a string of non-special characters.
-var reMain = /^(?:[\n`\[\]\\!<&*_]|[^\n`\[\]\\!<&*_]+)/m;
+var reMain = /^(?:[\n`\$\[\]\\!<&*_]|[^\n\$`\[\]\\!<&*_]+)/m;
 
 // UTILITY FUNCTIONS
 
@@ -179,6 +179,31 @@ var parseBackticks = function(inlines) {
   return (this.pos - startpos);
 };
 
+var parseMath = function(inlines) {
+  var startpos = this.pos;
+  var math = this.match(/^\${1,2}|\\\(|\\\[|\\begin/);
+  console.log(math);
+  if (!math) {
+    return 0;
+  }
+  var afterOpenMath = this.pos;
+  var foundCode = false;
+  var match;
+  while (!foundCode && (match = this.match(/\${1,2}|\\\)|\\\]|\\end/m))) {
+    console.log(math,match);
+    if (match) {
+      console.log(this.subject);
+      inlines.push({ t: 'Str', c: this.subject.slice(afterOpenMath-math.length,
+          this.pos) });
+      return (this.pos - startpos);
+    }
+  }
+  // If we got here, we didn't match a closing math sequence.
+  inlines.push({ t: 'Str', c: math });
+  this.pos = afterOpenMath;
+  return (this.pos - startpos);
+};
+
 // Parse a backslash-escaped special character, adding either the escaped
 // character, a hard line break (if the backslash is followed by a newline),
 // or a literal backslash to the 'inlines' list.
@@ -186,7 +211,13 @@ var parseEscaped = function(inlines) {
   var subj = this.subject,
       pos  = this.pos;
   if (subj[pos] === '\\') {
-    if (subj[pos + 1] === '\n') {
+    if ("([b".indexOf(subj[pos+1]) !== -1) {
+      return this.parseMath(inlines);
+    }
+    else if (")]e".indexOf(subj[pos+1]) !== -1) {
+      return 0;
+    }
+    else if (subj[pos + 1] === '\n') {
       inlines.push({ t: 'Hardbreak' });
       this.pos = this.pos + 2;
       return 2;
@@ -437,6 +468,9 @@ var parseLinkLabel = function() {
       case '`':
         this.parseBackticks([]);
         break;
+      case '$':
+        this.parseMath([]);
+        break;
       case '<':
         this.parseAutolink([]) || this.parseHtmlTag([]) || this.parseString([]);
         break;
@@ -684,6 +718,9 @@ var parseInline = function(inlines) {
   case '`':
     res = this.parseBackticks(inlines);
     break;
+  case '$':
+    res = this.parseMath(inlines);
+    break;
   case '*':
   case '_':
     res = this.parseEmphasis(inlines);
@@ -727,6 +764,7 @@ function InlineParser(){
     peek: peek,
     spnl: spnl,
     parseBackticks: parseBackticks,
+    parseMath: parseMath,
     parseEscaped: parseEscaped,
     parseAutolink: parseAutolink,
     parseHtmlTag: parseHtmlTag,
